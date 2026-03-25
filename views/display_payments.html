@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payments List</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; font-size: 12pt; margin: 0; padding: 10mm; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-5xl mx-auto bg-white rounded-lg shadow-lg p-6">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold">Payment Records</h1>
+            <div class="flex gap-3 no-print">
+                <a href="/receive-payment" class="bg-teal-500 text-white px-4 py-2 rounded hover:bg-teal-600 text-sm">+ Receive Payment</a>
+                <a href="/" class="text-blue-600 hover:underline text-sm py-2">← Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="flex flex-wrap gap-3 mb-6 no-print bg-gray-50 p-4 rounded-lg">
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Filter by Shop ID</label>
+                <input type="text" id="filterShop" class="border px-3 py-1.5 rounded text-sm w-36" placeholder="Shop ID">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">From Date</label>
+                <input type="date" id="fromDate" class="border px-3 py-1.5 rounded text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">To Date</label>
+                <input type="date" id="toDate" class="border px-3 py-1.5 rounded text-sm">
+            </div>
+            <div class="flex items-end gap-2">
+                <button onclick="applyFilter()" class="bg-blue-500 text-white px-4 py-1.5 rounded hover:bg-blue-600 text-sm">Apply</button>
+                <button onclick="clearFilter()" class="bg-gray-200 px-4 py-1.5 rounded hover:bg-gray-300 text-sm">Clear</button>
+            </div>
+            <!-- Summary -->
+            <div class="ml-auto flex items-end">
+                <div class="text-right text-sm">
+                    <span class="text-gray-500">Total shown:</span>
+                    <span id="totalAmount" class="font-bold text-teal-700 text-lg ml-2">0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-sm">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="border px-4 py-3 text-left">Payment ID</th>
+                        <th class="border px-4 py-3 text-left">Shop ID</th>
+                        <th class="border px-4 py-3 text-left">Shop Name</th>
+                        <th class="border px-4 py-3 text-right">Amount</th>
+                        <th class="border px-4 py-3 text-left">Notes</th>
+                        <th class="border px-4 py-3 text-left">Date</th>
+                        <th class="border px-4 py-3 text-center no-print">Preview</th>
+                    </tr>
+                </thead>
+                <tbody id="paymentsBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex justify-between items-center mt-6">
+            <button onclick="changePage(-1)" id="prevPage" disabled
+                class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50">Previous</button>
+            <span id="pageInfo" class="text-sm">Page 1 of 1</span>
+            <button onclick="changePage(1)" id="nextPage"
+                class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50">Next</button>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-2xl max-w-md w-full p-8 relative">
+            <button onclick="closePreview()" class="absolute top-4 right-6 text-gray-500 hover:text-gray-900 text-3xl no-print">&times;</button>
+            <div id="previewContent"></div>
+            <div class="mt-6 flex justify-end gap-3 no-print">
+                <button onclick="closePreview()" class="px-5 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
+                <button onclick="window.print()" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Print Receipt</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        const limit = 20;
+        let totalPages = 1;
+        let allPayments = [];
+        let shopCache = {};
+
+        async function getShopName(shopId) {
+            if (shopCache[shopId]) return shopCache[shopId];
+            try {
+                const res = await fetch(`/api/v1/bulk/shops/${shopId}`);
+                if (res.ok) { const s = await res.json(); shopCache[shopId] = s.name; return s.name; }
+            } catch {}
+            return '—';
+        }
+
+        async function loadPayments() {
+            let url = `/api/v1/payments/?page=${currentPage}&limit=${limit}`;
+            const shopId = document.getElementById('filterShop').value.trim();
+            if (shopId) url += `&shop_id=${shopId}`;
+
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                totalPages = Math.ceil(data.total / limit) || 1;
+                document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+                document.getElementById('prevPage').disabled = currentPage <= 1;
+                document.getElementById('nextPage').disabled = currentPage >= totalPages;
+
+                // Filter by date client-side (API doesn't have date filter yet)
+                const from = document.getElementById('fromDate').value;
+                const to = document.getElementById('toDate').value;
+                let payments = data.data || [];
+                if (from) payments = payments.filter(p => p.created_at && new Date(p.created_at) >= new Date(from));
+                if (to) payments = payments.filter(p => p.created_at && new Date(p.created_at) <= new Date(to + 'T23:59:59'));
+
+                allPayments = payments;
+                await renderTable(payments);
+            } catch (err) {
+                document.getElementById('paymentsBody').innerHTML =
+                    `<tr><td colspan="7" class="text-center py-8 text-red-500">Error: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function renderTable(payments) {
+            if (!payments.length) {
+                document.getElementById('paymentsBody').innerHTML =
+                    `<tr><td colspan="7" class="text-center py-8 text-gray-400">No payments found</td></tr>`;
+                document.getElementById('totalAmount').textContent = '0.00';
+                return;
+            }
+
+            const total = payments.reduce((s, p) => s + (p.amount || 0), 0);
+            document.getElementById('totalAmount').textContent = total.toFixed(2);
+
+            const rows = await Promise.all(payments.map(async (p, i) => {
+                const name = await getShopName(p.shop_id);
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="border px-4 py-3 font-mono text-xs">${p.payment_id}</td>
+                        <td class="border px-4 py-3 text-sm">${p.shop_id}</td>
+                        <td class="border px-4 py-3 text-sm">${name}</td>
+                        <td class="border px-4 py-3 text-right font-semibold text-teal-700">${(p.amount || 0).toFixed(2)}</td>
+                        <td class="border px-4 py-3 text-sm text-gray-500">${p.notes || '—'}</td>
+                        <td class="border px-4 py-3 text-sm">${p.created_at ? new Date(p.created_at).toLocaleString() : '—'}</td>
+                        <td class="border px-4 py-3 text-center no-print">
+                            <button onclick="previewPayment(${i})" class="text-blue-600 hover:underline text-sm">View</button>
+                        </td>
+                    </tr>`;
+            }));
+            document.getElementById('paymentsBody').innerHTML = rows.join('');
+        }
+
+        async function previewPayment(index) {
+            const p = allPayments[index];
+            const name = await getShopName(p.shop_id);
+            document.getElementById('previewContent').innerHTML = `
+                <div class="text-center mb-6 border-b pb-4">
+                    <h1 class="text-2xl font-bold">PAYMENT RECEIPT</h1>
+                    <p class="text-lg font-semibold mt-1">${p.payment_id}</p>
+                    <p class="text-gray-500 text-sm mt-1">${p.created_at ? new Date(p.created_at).toLocaleString() : ''}</p>
+                </div>
+                <div class="space-y-3 text-sm mb-6">
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-gray-500">Shop ID</span>
+                        <span class="font-medium">${p.shop_id}</span>
+                    </div>
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-gray-500">Shop Name</span>
+                        <span class="font-medium">${name}</span>
+                    </div>
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-gray-500">Notes</span>
+                        <span>${p.notes || '—'}</span>
+                    </div>
+                    <div class="flex justify-between pt-2">
+                        <span class="text-gray-700 font-semibold text-base">Amount Received</span>
+                        <span class="text-teal-700 font-bold text-2xl">${(p.amount || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+                <div class="text-center text-gray-400 text-xs italic mt-6">Thank you for your payment</div>`;
+            document.getElementById('previewModal').classList.remove('hidden');
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.add('hidden');
+        }
+
+        function applyFilter() { currentPage = 1; loadPayments(); }
+        function clearFilter() {
+            document.getElementById('filterShop').value = '';
+            document.getElementById('fromDate').value = '';
+            document.getElementById('toDate').value = '';
+            currentPage = 1;
+            loadPayments();
+        }
+        function changePage(delta) {
+            const np = currentPage + delta;
+            if (np < 1 || np > totalPages) return;
+            currentPage = np;
+            loadPayments();
+        }
+
+        loadPayments();
+    </script>
+</body>
+</html>

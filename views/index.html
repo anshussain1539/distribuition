@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distribution Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="max-w-7xl mx-auto p-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Distribution Dashboard</h1>
+                <p class="text-gray-500 text-sm mt-1">Overview & Quick Navigation</p>
+            </div>
+            <a href="/api/docs" class="text-sm text-blue-600 hover:underline">API Docs</a>
+        </div>
+
+        <!-- Analytics Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Total Shops</p>
+                <p id="totalShops" class="text-3xl font-bold text-blue-600 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Total Items</p>
+                <p id="totalItems" class="text-3xl font-bold text-green-600 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Completed Invoices</p>
+                <p id="totalInvoices" class="text-3xl font-bold text-indigo-600 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Draft Invoices</p>
+                <p id="draftInvoices" class="text-3xl font-bold text-yellow-500 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Total Revenue</p>
+                <p id="totalRevenue" class="text-3xl font-bold text-emerald-600 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Outstanding Balance</p>
+                <p id="totalOutstanding" class="text-3xl font-bold text-red-500 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Payments Received</p>
+                <p id="totalPayments" class="text-3xl font-bold text-teal-600 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">Purchase Invoices</p>
+                <p id="purchaseInvoices" class="text-3xl font-bold text-purple-600 mt-1">—</p>
+            </div>
+        </div>
+
+        <!-- Navigation Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+            <a href="/display-items"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-blue-50 transition group">
+                <div class="text-2xl mb-2">🏪</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-blue-600">Shops & Items</h3>
+                <p class="text-sm text-gray-500 mt-1">Manage shops and inventory items</p>
+            </a>
+            <a href="/invoice"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-indigo-50 transition group">
+                <div class="text-2xl mb-2">🧾</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-indigo-600">Sale Invoice</h3>
+                <p class="text-sm text-gray-500 mt-1">Create sale invoices with free qty & discounts</p>
+            </a>
+            <a href="/display-invoices"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-green-50 transition group">
+                <div class="text-2xl mb-2">📋</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-green-600">Sale Invoices List</h3>
+                <p class="text-sm text-gray-500 mt-1">View drafts, complete & print invoices</p>
+            </a>
+            <a href="/purchase-invoice"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-purple-50 transition group">
+                <div class="text-2xl mb-2">📦</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-purple-600">Purchase Invoice</h3>
+                <p class="text-sm text-gray-500 mt-1">Record purchases & add stock</p>
+            </a>
+            <a href="/receive-payment"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-teal-50 transition group">
+                <div class="text-2xl mb-2">💰</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-teal-600">Receive Payment</h3>
+                <p class="text-sm text-gray-500 mt-1">Record payments & update shop balances</p>
+            </a>
+            <a href="/bulk-upload"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-orange-50 transition group">
+                <div class="text-2xl mb-2">📤</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-orange-600">Bulk Upload</h3>
+                <p class="text-sm text-gray-500 mt-1">Upload shops/items via CSV or Excel</p>
+            </a>
+            <a href="/display-purchase-invoices"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-purple-50 transition group">
+                <div class="text-2xl mb-2">📋</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-purple-600">Purchase List</h3>
+                <p class="text-sm text-gray-500 mt-1">View & complete purchase invoices</p>
+            </a>
+            <a href="/display-payments"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-teal-50 transition group">
+                <div class="text-2xl mb-2">🧾</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-teal-600">Payments List</h3>
+                <p class="text-sm text-gray-500 mt-1">View all payment receipts</p>
+            </a>
+            <a href="/analytics-view"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-yellow-50 transition group">
+                <div class="text-2xl mb-2">📊</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-yellow-600">Analytics</h3>
+                <p class="text-sm text-gray-500 mt-1">Sales, purchases & payments by date range</p>
+            </a>
+            <a href="/pay-supplier"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-purple-50 transition group">
+                <div class="text-2xl mb-2">🏭</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-purple-600">Pay Supplier</h3>
+                <p class="text-sm text-gray-500 mt-1">Record supplier payments & track balances</p>
+            </a>
+            <a href="/display-supplier-payments"
+                class="bg-white rounded-lg shadow p-6 hover:shadow-md hover:bg-purple-50 transition group">
+                <div class="text-2xl mb-2">📑</div>
+                <h3 class="font-bold text-gray-800 group-hover:text-purple-600">Supplier Payments List</h3>
+                <p class="text-sm text-gray-500 mt-1">View all supplier payment records</p>
+            </a>
+        </div>
+
+        <!-- Bottom Section: Recent Invoices + Top Shops by Balance -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Recent Invoices -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-bold mb-4">Recent Completed Invoices</h2>
+                <table class="w-full text-sm border-collapse">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-3 py-2 text-left">Invoice</th>
+                            <th class="border px-3 py-2 text-left">Shop</th>
+                            <th class="border px-3 py-2 text-right">Total</th>
+                            <th class="border px-3 py-2 text-left">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recentInvoices">
+                        <tr><td colspan="4" class="text-center py-4 text-gray-400">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Top Shops by Balance -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-bold mb-4">Top Shops by Outstanding Balance</h2>
+                <table class="w-full text-sm border-collapse">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-3 py-2 text-left">Shop ID</th>
+                            <th class="border px-3 py-2 text-left">Name</th>
+                            <th class="border px-3 py-2 text-right">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="topShops">
+                        <tr><td colspan="3" class="text-center py-4 text-gray-400">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadDashboard() {
+            try {
+                const res = await fetch('/api/v1/analytics/summary');
+                if (!res.ok) throw new Error('Failed to load analytics');
+                const data = await res.json();
+
+                document.getElementById('totalShops').textContent = data.total_shops;
+                document.getElementById('totalItems').textContent = data.total_items;
+                document.getElementById('totalInvoices').textContent = data.total_sale_invoices;
+                document.getElementById('draftInvoices').textContent = data.total_draft_invoices;
+                document.getElementById('totalRevenue').textContent = data.total_revenue.toLocaleString('en-PK', { minimumFractionDigits: 0 });
+                document.getElementById('totalOutstanding').textContent = data.total_outstanding.toLocaleString('en-PK', { minimumFractionDigits: 0 });
+                document.getElementById('totalPayments').textContent = data.total_payments.toLocaleString('en-PK', { minimumFractionDigits: 0 });
+                document.getElementById('purchaseInvoices').textContent = data.total_purchase_invoices;
+
+                // Recent invoices
+                const recentTbody = document.getElementById('recentInvoices');
+                if (!data.recent_invoices.length) {
+                    recentTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-400">No invoices yet</td></tr>';
+                } else {
+                    recentTbody.innerHTML = data.recent_invoices.map(inv => `
+                        <tr class="hover:bg-gray-50">
+                            <td class="border px-3 py-2 font-mono text-xs">${inv.invoice_id}</td>
+                            <td class="border px-3 py-2">${inv.shop_id}</td>
+                            <td class="border px-3 py-2 text-right font-semibold">${(inv.final_total || 0).toFixed(0)}</td>
+                            <td class="border px-3 py-2 text-xs">${inv.created_at ? new Date(inv.created_at).toLocaleDateString() : '-'}</td>
+                        </tr>`).join('');
+                }
+
+                // Top shops
+                const shopsTbody = document.getElementById('topShops');
+                if (!data.top_shops_by_balance.length) {
+                    shopsTbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-gray-400">No shops yet</td></tr>';
+                } else {
+                    shopsTbody.innerHTML = data.top_shops_by_balance.map(s => `
+                        <tr class="hover:bg-gray-50">
+                            <td class="border px-3 py-2 text-xs font-mono">${s.shop_id}</td>
+                            <td class="border px-3 py-2">${s.name}</td>
+                            <td class="border px-3 py-2 text-right font-bold ${(s.balance||0) > 0 ? 'text-red-600' : 'text-green-600'}">${(s.balance||0).toFixed(0)}</td>
+                        </tr>`).join('');
+                }
+            } catch (err) {
+                console.error('Dashboard load error:', err);
+            }
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>

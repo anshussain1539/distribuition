@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pay Supplier</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .ac-dropdown { position:absolute; background:white; border:1px solid #d1d5db; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.12); z-index:999; min-width:280px; max-height:240px; overflow-y:auto; }
+        .ac-item { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid #f3f4f6; }
+        .ac-item:hover { background:#faf5ff; }
+        .ac-id { font-weight:600; color:#7c3aed; }
+        .ac-sub { color:#6b7280; font-size:11px; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-6 max-w-xl">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold">Pay Supplier</h1>
+            <div class="flex gap-3 text-sm">
+                <a href="/display-supplier-payments" class="text-purple-600 hover:underline py-2">View All Payments →</a>
+                <a href="/" class="text-blue-600 hover:underline py-2">← Dashboard</a>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Supplier ID *</label>
+                    <div class="flex gap-2 items-start">
+                        <div class="relative flex-1">
+                            <input type="text" id="supplierId" class="border px-3 py-2 rounded w-full"
+                                placeholder="Supplier ID or name" autocomplete="off"
+                                oninput="acSupplier(this)" onblur="delayClose('supplierAc')">
+                            <div id="supplierAc" class="ac-dropdown hidden"></div>
+                        </div>
+                        <button type="button" onclick="fetchSupplier()"
+                            class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 text-sm">Lookup</button>
+                    </div>
+                    <div id="supplierInfo" class="mt-2 text-sm"></div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Amount *</label>
+                    <input type="number" id="amount" min="0.01" step="0.01"
+                        class="w-full border px-3 py-2 rounded" placeholder="0.00">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Notes</label>
+                    <input type="text" id="notes" class="w-full border px-3 py-2 rounded" placeholder="Optional notes">
+                </div>
+                <div id="errorMsg" class="text-red-500 text-sm hidden"></div>
+                <div id="successMsg" class="text-green-600 text-sm font-semibold hidden"></div>
+                <button type="button" onclick="submitPayment()"
+                    class="w-full bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600 font-semibold">
+                    Pay Supplier
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchSupplier() {
+            const supplierId = document.getElementById('supplierId').value.trim();
+            if (!supplierId) return;
+            try {
+                const res = await fetch(`/api/v1/bulk/suppliers/${supplierId}`);
+                const s = await res.json();
+                const bal = s.balance || 0;
+                document.getElementById('supplierInfo').innerHTML =
+                    `<strong>${s.name}</strong> — ${s.address}${s.city ? ', ' + s.city : ''}
+                    <br>We owe them: <span class="${bal > 0 ? 'text-red-600' : 'text-green-600'} font-bold text-base">${bal.toFixed(2)}</span>`;
+            } catch {
+                document.getElementById('supplierInfo').innerHTML = '<span class="text-red-500">Supplier not found</span>';
+            }
+        }
+
+        async function submitPayment() {
+            const supplierId = document.getElementById('supplierId').value.trim();
+            const amount = parseFloat(document.getElementById('amount').value);
+            const notes = document.getElementById('notes').value.trim();
+            const errEl = document.getElementById('errorMsg');
+            const succEl = document.getElementById('successMsg');
+            errEl.classList.add('hidden');
+            succEl.classList.add('hidden');
+
+            if (!supplierId || !amount || amount <= 0) {
+                errEl.textContent = 'Supplier ID and a valid amount are required.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/v1/supplier-payments/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ supplier_id: supplierId, amount, notes: notes || null })
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || await res.text());
+                const data = await res.json();
+                succEl.textContent = `${data.payment_id} recorded. Balance remaining: ${data.new_balance.toFixed(2)}`;
+                succEl.classList.remove('hidden');
+                document.getElementById('amount').value = '';
+                document.getElementById('notes').value = '';
+                fetchSupplier();
+            } catch (err) {
+                errEl.textContent = 'Error: ' + err.message;
+                errEl.classList.remove('hidden');
+            }
+        }
+
+        // ── Autocomplete ──────────────────────────────────────────
+        let acTimer = null;
+        function delayClose(id) { setTimeout(() => { const d = document.getElementById(id); if (d) d.classList.add('hidden'); }, 200); }
+
+        async function acSupplier(input) {
+            const q = input.value.trim();
+            const drop = document.getElementById('supplierAc');
+            if (q.length < 1) { drop.classList.add('hidden'); return; }
+            clearTimeout(acTimer);
+            acTimer = setTimeout(async () => {
+                const res = await fetch(`/api/v1/bulk/suppliers/search?q=${encodeURIComponent(q)}`);
+                const list = await res.json();
+                if (!list.length) { drop.classList.add('hidden'); return; }
+                drop.innerHTML = list.map(s => `
+                    <div class="ac-item" onmousedown="pickSupplier('${s.supplier_id}')">
+                        <span class="ac-id">${s.supplier_id}</span>
+                        <span class="ac-sub ml-2">${s.name || ''}</span>
+                        <span class="ac-sub ml-2 float-right ${(s.balance||0) > 0 ? 'text-red-600' : 'text-green-600'} font-semibold">Owe: ${(s.balance||0).toFixed(0)}</span>
+                    </div>`).join('');
+                drop.classList.remove('hidden');
+            }, 200);
+        }
+
+        function pickSupplier(id) {
+            document.getElementById('supplierId').value = id;
+            document.getElementById('supplierAc').classList.add('hidden');
+            fetchSupplier();
+        }
+    </script>
+</body>
+</html>

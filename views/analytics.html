@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print { .no-print { display: none !important; } body { background: white; } }
+        .tab-active { border-bottom: 3px solid #3b82f6; color: #1d4ed8; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-7xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold">Analytics</h1>
+            <div class="flex gap-3 no-print">
+                <button onclick="window.print()" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm">Print Report</button>
+                <a href="/" class="text-blue-600 hover:underline text-sm py-2">← Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div class="bg-white rounded-lg shadow p-5 mb-6 no-print">
+            <div class="flex flex-wrap gap-4 items-end">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">From Date</label>
+                    <input type="date" id="fromDate" class="border px-3 py-2 rounded text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">To Date</label>
+                    <input type="date" id="toDate" class="border px-3 py-2 rounded text-sm">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="applyRange()" class="bg-blue-500 text-white px-5 py-2 rounded hover:bg-blue-600 text-sm font-semibold">Apply</button>
+                    <button onclick="setToday()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 text-sm">Today</button>
+                    <button onclick="setThisWeek()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 text-sm">This Week</button>
+                    <button onclick="setThisMonth()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 text-sm">This Month</button>
+                </div>
+                <div id="rangeLabel" class="ml-auto text-sm text-gray-500 py-2"></div>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div id="summaryCards" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 hidden">
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-indigo-500">
+                <p class="text-xs text-gray-500 uppercase tracking-wide">Sales Total</p>
+                <p id="cardSalesTotal" class="text-2xl font-bold text-indigo-600 mt-1">—</p>
+                <p id="cardSalesCount" class="text-xs text-gray-400 mt-1"></p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-purple-500">
+                <p class="text-xs text-gray-500 uppercase tracking-wide">Purchases Total</p>
+                <p id="cardPurchasesTotal" class="text-2xl font-bold text-purple-600 mt-1">—</p>
+                <p id="cardPurchasesCount" class="text-xs text-gray-400 mt-1"></p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-teal-500">
+                <p class="text-xs text-gray-500 uppercase tracking-wide">Payments Received</p>
+                <p id="cardPaymentsTotal" class="text-2xl font-bold text-teal-600 mt-1">—</p>
+                <p id="cardPaymentsCount" class="text-xs text-gray-400 mt-1"></p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-emerald-500">
+                <p class="text-xs text-gray-500 uppercase tracking-wide">Net (Sales − Purchases)</p>
+                <p id="cardNet" class="text-2xl font-bold mt-1">—</p>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div id="tabsSection" class="bg-white rounded-lg shadow hidden">
+            <div class="flex border-b px-4">
+                <button onclick="switchTab('sales')" id="tabSales"
+                    class="py-3 px-5 text-sm tab-active">Sales</button>
+                <button onclick="switchTab('purchases')" id="tabPurchases"
+                    class="py-3 px-5 text-sm text-gray-500 hover:text-gray-700">Purchases</button>
+                <button onclick="switchTab('payments')" id="tabPayments"
+                    class="py-3 px-5 text-sm text-gray-500 hover:text-gray-700">Payments</button>
+            </div>
+
+            <!-- Sales Tab -->
+            <div id="paneSales" class="p-6">
+                <table class="w-full border-collapse text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-3 py-2 text-left">Invoice ID</th>
+                            <th class="border px-3 py-2 text-left">Shop ID</th>
+                            <th class="border px-3 py-2 text-right">Amount</th>
+                            <th class="border px-3 py-2 text-left">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesBody"></tbody>
+                    <tfoot id="salesFoot" class="bg-gray-50 font-semibold"></tfoot>
+                </table>
+            </div>
+
+            <!-- Purchases Tab -->
+            <div id="panePurchases" class="p-6 hidden">
+                <table class="w-full border-collapse text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-3 py-2 text-left">Invoice ID</th>
+                            <th class="border px-3 py-2 text-left">Supplier</th>
+                            <th class="border px-3 py-2 text-right">Amount</th>
+                            <th class="border px-3 py-2 text-left">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="purchasesBody"></tbody>
+                    <tfoot id="purchasesFoot" class="bg-gray-50 font-semibold"></tfoot>
+                </table>
+            </div>
+
+            <!-- Payments Tab -->
+            <div id="panePayments" class="p-6 hidden">
+                <table class="w-full border-collapse text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-3 py-2 text-left">Payment ID</th>
+                            <th class="border px-3 py-2 text-left">Shop ID</th>
+                            <th class="border px-3 py-2 text-right">Amount</th>
+                            <th class="border px-3 py-2 text-left">Notes</th>
+                            <th class="border px-3 py-2 text-left">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="paymentsBody"></tbody>
+                    <tfoot id="paymentsFoot" class="bg-gray-50 font-semibold"></tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- No data message -->
+        <div id="noData" class="bg-white rounded-lg shadow p-12 text-center text-gray-400 hidden">
+            No data found for the selected range.
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="bg-white rounded-lg shadow p-12 text-center text-gray-400 hidden">
+            Loading...
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'sales';
+
+        function fmt(d) { return d ? new Date(d).toLocaleString() : '—'; }
+        function fmtN(n) { return (n || 0).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+        function todayStr() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        function setToday() {
+            const t = todayStr();
+            document.getElementById('fromDate').value = t;
+            document.getElementById('toDate').value = t;
+            applyRange();
+        }
+
+        function setThisWeek() {
+            const now = new Date();
+            const day = now.getDay();
+            const mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+            document.getElementById('fromDate').value = mon.toISOString().split('T')[0];
+            document.getElementById('toDate').value = todayStr();
+            applyRange();
+        }
+
+        function setThisMonth() {
+            const now = new Date();
+            document.getElementById('fromDate').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+            document.getElementById('toDate').value = todayStr();
+            applyRange();
+        }
+
+        async function applyRange() {
+            const from = document.getElementById('fromDate').value;
+            const to = document.getElementById('toDate').value;
+            if (!from || !to) { alert('Please select both dates.'); return; }
+
+            document.getElementById('summaryCards').classList.add('hidden');
+            document.getElementById('tabsSection').classList.add('hidden');
+            document.getElementById('noData').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('rangeLabel').textContent = `${from}  →  ${to}`;
+
+            try {
+                const res = await fetch(`/api/v1/analytics/range?from_date=${from}&to_date=${to}`);
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                document.getElementById('loading').classList.add('hidden');
+
+                const hasData = data.sales.count > 0 || data.purchases.count > 0 || data.payments.count > 0;
+                if (!hasData) {
+                    document.getElementById('noData').classList.remove('hidden');
+                    return;
+                }
+
+                // Cards
+                document.getElementById('cardSalesTotal').textContent = fmtN(data.sales.total);
+                document.getElementById('cardSalesCount').textContent = `${data.sales.count} invoice${data.sales.count !== 1 ? 's' : ''}`;
+                document.getElementById('cardPurchasesTotal').textContent = fmtN(data.purchases.total);
+                document.getElementById('cardPurchasesCount').textContent = `${data.purchases.count} invoice${data.purchases.count !== 1 ? 's' : ''}`;
+                document.getElementById('cardPaymentsTotal').textContent = fmtN(data.payments.total);
+                document.getElementById('cardPaymentsCount').textContent = `${data.payments.count} payment${data.payments.count !== 1 ? 's' : ''}`;
+                const net = data.net;
+                const netEl = document.getElementById('cardNet');
+                netEl.textContent = fmtN(net);
+                netEl.className = `text-2xl font-bold mt-1 ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`;
+
+                // Sales table
+                document.getElementById('salesBody').innerHTML = data.sales.invoices.length
+                    ? data.sales.invoices.map(i => `
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="border px-3 py-2 font-mono text-xs">${i.invoice_id}</td>
+                            <td class="border px-3 py-2">${i.shop_id}</td>
+                            <td class="border px-3 py-2 text-right font-semibold text-indigo-700">${fmtN(i.final_total)}</td>
+                            <td class="border px-3 py-2 text-xs">${fmt(i.created_at)}</td>
+                        </tr>`).join('')
+                    : '<tr><td colspan="4" class="text-center py-4 text-gray-400">No sales</td></tr>';
+                document.getElementById('salesFoot').innerHTML =
+                    `<tr><td colspan="2" class="border px-3 py-2">Total (${data.sales.count})</td><td class="border px-3 py-2 text-right">${fmtN(data.sales.total)}</td><td class="border px-3 py-2"></td></tr>`;
+
+                // Purchases table
+                document.getElementById('purchasesBody').innerHTML = data.purchases.invoices.length
+                    ? data.purchases.invoices.map(i => `
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="border px-3 py-2 font-mono text-xs">${i.invoice_id}</td>
+                            <td class="border px-3 py-2">${i.supplier_name || '—'}</td>
+                            <td class="border px-3 py-2 text-right font-semibold text-purple-700">${fmtN(i.total)}</td>
+                            <td class="border px-3 py-2 text-xs">${fmt(i.created_at)}</td>
+                        </tr>`).join('')
+                    : '<tr><td colspan="4" class="text-center py-4 text-gray-400">No purchases</td></tr>';
+                document.getElementById('purchasesFoot').innerHTML =
+                    `<tr><td colspan="2" class="border px-3 py-2">Total (${data.purchases.count})</td><td class="border px-3 py-2 text-right">${fmtN(data.purchases.total)}</td><td class="border px-3 py-2"></td></tr>`;
+
+                // Payments table
+                document.getElementById('paymentsBody').innerHTML = data.payments.records.length
+                    ? data.payments.records.map(p => `
+                        <tr class="hover:bg-gray-50 border-b">
+                            <td class="border px-3 py-2 font-mono text-xs">${p.payment_id}</td>
+                            <td class="border px-3 py-2">${p.shop_id}</td>
+                            <td class="border px-3 py-2 text-right font-semibold text-teal-700">${fmtN(p.amount)}</td>
+                            <td class="border px-3 py-2 text-xs text-gray-500">${p.notes || '—'}</td>
+                            <td class="border px-3 py-2 text-xs">${fmt(p.created_at)}</td>
+                        </tr>`).join('')
+                    : '<tr><td colspan="5" class="text-center py-4 text-gray-400">No payments</td></tr>';
+                document.getElementById('paymentsFoot').innerHTML =
+                    `<tr><td colspan="2" class="border px-3 py-2">Total (${data.payments.count})</td><td class="border px-3 py-2 text-right">${fmtN(data.payments.total)}</td><td colspan="2" class="border px-3 py-2"></td></tr>`;
+
+                document.getElementById('summaryCards').classList.remove('hidden');
+                document.getElementById('tabsSection').classList.remove('hidden');
+                switchTab(currentTab);
+            } catch (err) {
+                document.getElementById('loading').classList.add('hidden');
+                alert('Error: ' + err.message);
+            }
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            ['sales', 'purchases', 'payments'].forEach(t => {
+                document.getElementById(`pane${t.charAt(0).toUpperCase() + t.slice(1)}`).classList.toggle('hidden', t !== tab);
+                const btn = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+                btn.className = t === tab
+                    ? 'py-3 px-5 text-sm tab-active'
+                    : 'py-3 px-5 text-sm text-gray-500 hover:text-gray-700';
+            });
+        }
+
+        // Default: load today on page open
+        setToday();
+    </script>
+</body>
+</html>

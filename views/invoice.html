@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sale Invoice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; }
+        }
+        .ac-dropdown {
+            position: absolute; background: white; border: 1px solid #d1d5db;
+            border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+            z-index: 999; min-width: 260px; max-height: 260px; overflow-y: auto;
+        }
+        .ac-item {
+            padding: 8px 12px; cursor: pointer; font-size: 13px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .ac-item:hover, .ac-item.ac-active { background: #eff6ff; }
+        .ac-item .ac-id { font-weight: 600; color: #1d4ed8; }
+        .ac-item .ac-sub { color: #6b7280; font-size: 11px; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-6 max-w-6xl bg-white rounded-lg shadow-lg">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold">Sale Invoice</h1>
+            <a href="/" class="text-blue-600 hover:underline text-sm no-print">← Dashboard</a>
+        </div>
+
+        <form id="invoiceForm">
+            <!-- Shop -->
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Shop</h2>
+                <div class="flex gap-2 items-start">
+                    <div class="relative">
+                        <input type="text" id="shopId" class="border px-3 py-2 rounded w-64"
+                            placeholder="Shop ID or name" autocomplete="off"
+                            oninput="acShop(this)" onblur="delayClose('shopAc')" required>
+                        <div id="shopAc" class="ac-dropdown hidden"></div>
+                    </div>
+                    <div id="shopDetails" class="py-2 text-sm text-gray-600"></div>
+                </div>
+            </div>
+
+            <!-- Items Table -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold mb-2">Items</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-sm" id="itemsTable">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="border px-2 py-2">Item ID</th>
+                                <th class="border px-2 py-2">Name</th>
+                                <th class="border px-2 py-2">Qty</th>
+                                <th class="border px-2 py-2">Free Qty</th>
+                                <th class="border px-2 py-2">Price</th>
+                                <th class="border px-2 py-2">Disc %</th>
+                                <th class="border px-2 py-2">Price Disc</th>
+                                <th class="border px-2 py-2">Subtotal</th>
+                                <th class="border px-2 py-2 no-print">Act</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsBody"></tbody>
+                    </table>
+                </div>
+                <button type="button" onclick="addItemRow()"
+                    class="mt-2 bg-blue-500 text-white py-1 px-4 rounded hover:bg-blue-600 no-print text-sm">+ Add Item</button>
+            </div>
+
+            <!-- Totals -->
+            <div class="flex justify-end mb-4">
+                <div class="w-80 space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <label>Overall Discount (%)</label>
+                        <input type="number" id="overallDiscount" min="0" max="100" step="0.01"
+                            class="border px-2 py-1 rounded w-28 text-right" value="0" oninput="calculateTotals()">
+                    </div>
+                    <div class="flex justify-between">
+                        <label>Total Discount (Amount)</label>
+                        <input type="number" id="totalDiscountAmount" min="0" step="0.01"
+                            class="border px-2 py-1 rounded w-28 text-right" value="0" oninput="calculateTotals()">
+                    </div>
+                    <div class="flex justify-between border-t pt-2">
+                        <span>Total Before Disc:</span>
+                        <span id="totalBefore">0.00</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Discount:</span>
+                        <span id="discountAmount">0.00</span>
+                    </div>
+                    <div class="flex justify-between font-bold text-base border-t pt-2">
+                        <span>Final Total:</span>
+                        <span id="finalTotal">0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex justify-end gap-3 no-print">
+                <button type="button" onclick="saveInvoice(false)"
+                    class="bg-green-500 text-white py-2 px-5 rounded hover:bg-green-600">Save Draft</button>
+                <button type="button" onclick="saveInvoice(true)"
+                    class="bg-indigo-500 text-white py-2 px-5 rounded hover:bg-indigo-600">Complete & Deduct Stock</button>
+                <button type="button" onclick="window.print()"
+                    class="bg-gray-500 text-white py-2 px-5 rounded hover:bg-gray-600">Print</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        let items = [];
+        let editId = new URLSearchParams(window.location.search).get('edit');
+
+        async function fetchShopDetails() {
+            const shopId = document.getElementById('shopId').value.trim();
+            if (!shopId) return;
+            try {
+                const res = await fetch(`/api/v1/bulk/shops/${shopId}`);
+                const shop = await res.json();
+                document.getElementById('shopDetails').innerHTML =
+                    `<strong>${shop.name}</strong> | ${shop.address}${shop.city ? ', ' + shop.city : ''} | Balance: <span class="${shop.balance > 0 ? 'text-red-600' : 'text-green-600'} font-semibold">${(shop.balance || 0).toFixed(2)}</span>`;
+                document.getElementById('shopDetails').classList.remove('text-red-500');
+            } catch {
+                document.getElementById('shopDetails').innerHTML = '<span class="text-red-500">Shop not found</span>';
+            }
+        }
+
+        function addItemRow(item = { item_id: '', name: '', quantity: 1, quantity_free: 0, price: 0, discount: 0, price_discount: 0, subtotal: 0 }) {
+            const idx = items.length;
+            items.push({ ...item });
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="border px-1 py-1">
+                    <input type="text" name="item_id" value="${item.item_id}" autocomplete="off"
+                        class="w-24 border px-1 py-1 rounded text-sm"
+                        oninput="acItem(this, ${idx})" onblur="delayCloseGlobal()" required>
+                </td>
+                <td class="border px-1 py-1 text-sm"><span name="name">${item.name}</span><br><span name="size" class="text-xs text-gray-400"></span></td>
+                <td class="border px-1 py-1"><input type="number" name="quantity" min="1" value="${item.quantity}"
+                    class="w-16 border px-1 py-1 rounded text-sm text-right" oninput="calculateSubtotal(${idx})" required></td>
+                <td class="border px-1 py-1"><input type="number" name="quantity_free" min="0" value="${item.quantity_free}"
+                    class="w-16 border px-1 py-1 rounded text-sm text-right" oninput="calculateSubtotal(${idx})"></td>
+                <td class="border px-1 py-1 text-right text-sm"><span name="price">${item.price.toFixed(2)}</span></td>
+                <td class="border px-1 py-1"><input type="number" name="discount" min="0" max="100" step="0.01" value="${item.discount}"
+                    class="w-16 border px-1 py-1 rounded text-sm text-right" oninput="calculateSubtotal(${idx})"></td>
+                <td class="border px-1 py-1"><input type="number" name="price_discount" min="0" step="0.01" value="${item.price_discount}"
+                    class="w-20 border px-1 py-1 rounded text-sm text-right" oninput="calculateSubtotal(${idx})"></td>
+                <td class="border px-1 py-1 text-right font-medium text-sm"><span name="subtotal">${item.subtotal.toFixed(2)}</span></td>
+                <td class="border px-1 py-1 no-print text-center">
+                    <button type="button" onclick="removeItemRow(${idx})" class="text-red-500 hover:underline text-xs">X</button>
+                </td>
+            `;
+            document.getElementById('itemsBody').appendChild(row);
+            row.querySelector('input[name="item_id"]').focus();
+            if (item.item_id) fetchItemDetails(idx);
+        }
+
+        async function fetchItemDetails(index) {
+            const row = document.getElementById('itemsBody').rows[index];
+            const itemId = row.querySelector('input[name="item_id"]').value.trim();
+            if (!itemId) return;
+            try {
+                const res = await fetch(`/api/v1/bulk/items/${itemId}`);
+                const item = await res.json();
+                row.querySelector('[name="name"]').textContent = item.product_name || item.name || '';
+                row.querySelector('[name="size"]').textContent = item.size || '';
+                row.querySelector('[name="price"]').textContent = (item.retail_price || item.price || 0).toFixed(2);
+                items[index].item_id = itemId;
+                items[index].name = item.product_name || item.name || '';
+                items[index].price = item.retail_price || item.price || 0;
+                calculateSubtotal(index);
+            } catch {
+                row.querySelector('[name="name"]').textContent = 'Not found';
+            }
+        }
+
+        function calculateSubtotal(index) {
+            const row = document.getElementById('itemsBody').rows[index];
+            const quantity = parseFloat(row.querySelector('input[name="quantity"]').value) || 0;
+            const price = parseFloat(row.querySelector('[name="price"]').textContent) || 0;
+            const discount = parseFloat(row.querySelector('input[name="discount"]').value) || 0;
+            const price_discount = parseFloat(row.querySelector('input[name="price_discount"]').value) || 0;
+
+            // subtotal = qty * price * (1 - disc%) - qty * price_discount
+            const subtotal = Math.max(0, quantity * price * (1 - discount / 100) - quantity * price_discount);
+            row.querySelector('[name="subtotal"]').textContent = subtotal.toFixed(2);
+            items[index].quantity = quantity;
+            items[index].quantity_free = parseInt(row.querySelector('input[name="quantity_free"]').value) || 0;
+            items[index].discount = discount;
+            items[index].price_discount = price_discount;
+            items[index].subtotal = subtotal;
+            calculateTotals();
+        }
+
+        function calculateTotals() {
+            const totalBefore = items.reduce((s, i) => s + (i.subtotal || 0), 0);
+            const overallDiscount = parseFloat(document.getElementById('overallDiscount').value) || 0;
+            const totalDiscountAmount = parseFloat(document.getElementById('totalDiscountAmount').value) || 0;
+            const discountAmount = totalBefore * (overallDiscount / 100) + totalDiscountAmount;
+            const finalTotal = Math.max(0, totalBefore - discountAmount);
+
+            document.getElementById('totalBefore').textContent = totalBefore.toFixed(2);
+            document.getElementById('discountAmount').textContent = discountAmount.toFixed(2);
+            document.getElementById('finalTotal').textContent = finalTotal.toFixed(2);
+        }
+
+        function removeItemRow(index) {
+            items.splice(index, 1);
+            document.getElementById('itemsBody').deleteRow(index);
+            calculateTotals();
+        }
+
+        async function saveInvoice(complete = false) {
+            const shopId = document.getElementById('shopId').value.trim();
+            const overallDiscount = parseFloat(document.getElementById('overallDiscount').value) || 0;
+            const totalDiscountAmount = parseFloat(document.getElementById('totalDiscountAmount').value) || 0;
+            const finalTotal = parseFloat(document.getElementById('finalTotal').textContent) || 0;
+
+            if (!shopId || items.length === 0 || items.some(i => !i.item_id || i.quantity <= 0)) {
+                alert('Please fill all required fields.');
+                return;
+            }
+
+            const invoice = {
+                shop_id: shopId,
+                items: items.map(i => ({
+                    item_id: i.item_id,
+                    quantity: i.quantity,
+                    quantity_free: i.quantity_free || 0,
+                    price: i.price,
+                    discount: i.discount || 0,
+                    price_discount: i.price_discount || 0
+                })),
+                overall_discount: overallDiscount,
+                total_discount_amount: totalDiscountAmount,
+                final_total: finalTotal,
+                status: 'draft'
+            };
+
+            try {
+                const method = editId ? 'PUT' : 'POST';
+                const url = editId ? `/api/v1/invoice/invoices/${editId}` : `/api/v1/invoice/invoices`;
+                let res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(invoice)
+                });
+                if (!res.ok) throw new Error(await res.text());
+
+                const data = await res.json();
+                let id = data.invoice_id || editId;
+
+                if (complete) {
+                    const completeRes = await fetch(`/api/v1/invoice/invoices/${id}/complete`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+                    });
+                    if (!completeRes.ok) throw new Error(await completeRes.text());
+                    // Print then reset to blank invoice
+                    window.print();
+                    items = [];
+                    editId = null;
+                    document.getElementById('shopId').value = '';
+                    document.getElementById('shopDetails').innerHTML = '';
+                    document.getElementById('overallDiscount').value = 0;
+                    document.getElementById('totalDiscountAmount').value = 0;
+                    document.getElementById('itemsBody').innerHTML = '';
+                    calculateTotals();
+                    addItemRow();
+                    window.history.replaceState(null, '', window.location.pathname);
+                    return;
+                } else {
+                    alert(`Invoice ${id} saved as draft.`);
+                }
+
+                editId = null;
+                window.history.replaceState(null, '', window.location.pathname);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.activeElement.tagName === 'INPUT') {
+                e.preventDefault();
+                const row = document.activeElement.closest('tr');
+                if (!row) return;
+                const inputs = Array.from(row.querySelectorAll('input'));
+                const idx = inputs.indexOf(document.activeElement);
+                if (idx < inputs.length - 1) inputs[idx + 1].focus();
+                else addItemRow();
+            }
+        });
+
+        async function loadEditInvoice() {
+            if (!editId) return;
+            try {
+                const res = await fetch(`/api/v1/invoice/invoices/${editId}`);
+                const data = await res.json();
+                if (data.status !== 'draft') { alert('Can only edit drafts.'); return; }
+                document.getElementById('shopId').value = data.shop_id;
+                fetchShopDetails();
+                document.getElementById('overallDiscount').value = data.overall_discount || 0;
+                document.getElementById('totalDiscountAmount').value = data.total_discount_amount || 0;
+                document.getElementById('itemsBody').innerHTML = '';
+                items = [];
+                for (const it of data.items) {
+                    addItemRow({
+                        item_id: it.item_id, name: '',
+                        quantity: it.quantity, quantity_free: it.quantity_free || 0,
+                        price: it.price, discount: it.discount || 0,
+                        price_discount: it.price_discount || 0,
+                        subtotal: it.quantity * it.price * (1 - (it.discount||0)/100) - it.quantity * (it.price_discount||0)
+                    });
+                }
+                calculateTotals();
+            } catch (err) {
+                alert('Error loading invoice: ' + err.message);
+            }
+        }
+
+        if (!editId) addItemRow();
+        else loadEditInvoice();
+
+        // ── Autocomplete ──────────────────────────────────────────
+        let acTimer = null;
+
+        function delayClose(dropId) {
+            setTimeout(() => { const d = document.getElementById(dropId); if (d) d.classList.add('hidden'); }, 200);
+        }
+
+        async function acShop(input) {
+            const q = input.value.trim();
+            const drop = document.getElementById('shopAc');
+            if (q.length < 1) { drop.classList.add('hidden'); return; }
+            clearTimeout(acTimer);
+            acTimer = setTimeout(async () => {
+                const res = await fetch(`/api/v1/bulk/shops/search?q=${encodeURIComponent(q)}`);
+                const list = await res.json();
+                if (!list.length) { drop.classList.add('hidden'); return; }
+                drop.innerHTML = list.map(s => `
+                    <div class="ac-item" onmousedown="pickShop('${s.shop_id}','${(s.name||'').replace(/'/g,"\\'")}')">
+                        <span class="ac-id">${s.shop_id}</span>
+                        <span class="ac-sub ml-2">${s.name || ''}</span>
+                        ${s.balance != null ? `<span class="ac-sub ml-2 float-right">Bal: ${(s.balance||0).toFixed(0)}</span>` : ''}
+                    </div>`).join('');
+                drop.classList.remove('hidden');
+            }, 200);
+        }
+
+        function pickShop(id, name) {
+            document.getElementById('shopId').value = id;
+            document.getElementById('shopAc').classList.add('hidden');
+            fetchShopDetails();
+        }
+
+        let globalAcIdx = null;
+
+        function delayCloseGlobal() {
+            setTimeout(() => document.getElementById('itemAcGlobal').classList.add('hidden'), 200);
+        }
+
+        async function acItem(input, idx) {
+            const q = input.value.trim();
+            const drop = document.getElementById('itemAcGlobal');
+            if (q.length < 1) { drop.classList.add('hidden'); return; }
+            globalAcIdx = idx;
+            clearTimeout(acTimer);
+            acTimer = setTimeout(async () => {
+                const res = await fetch(`/api/v1/bulk/items/search?q=${encodeURIComponent(q)}`);
+                const list = await res.json();
+                if (!list.length) { drop.classList.add('hidden'); return; }
+                drop.innerHTML = list.map(it => `
+                    <div class="ac-item" onmousedown="pickItem(${idx},'${it.item_id}')">
+                        <span class="ac-id">${it.item_id}</span>
+                        <span class="ac-sub ml-2">${it.product_name || ''}</span>
+                        <span class="ac-sub ml-1 text-gray-400">${it.size || ''}</span>
+                        <span class="ac-sub float-right">${(it.retail_price||0).toFixed(0)} | Stk:${it.stock||0}</span>
+                    </div>`).join('');
+                // Position dropdown below the input
+                const rect = input.getBoundingClientRect();
+                drop.style.top = (rect.bottom + 2) + 'px';
+                drop.style.left = rect.left + 'px';
+                drop.classList.remove('hidden');
+            }, 200);
+        }
+
+        function pickItem(idx, itemId) {
+            const row = document.getElementById('itemsBody').rows[idx];
+            row.querySelector('input[name="item_id"]').value = itemId;
+            document.getElementById('itemAcGlobal').classList.add('hidden');
+            fetchItemDetails(idx);
+        }
+    </script>
+    <!-- Global item autocomplete dropdown (outside table to avoid overflow clipping) -->
+    <div id="itemAcGlobal" class="ac-dropdown hidden" style="position:fixed;z-index:9999;min-width:320px;max-height:260px;overflow-y:auto;"></div>
+</body>
+</html>

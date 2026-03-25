@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Invoice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print { .no-print { display: none !important; } body { background: white; } }
+        .ac-dropdown { position:absolute; background:white; border:1px solid #d1d5db; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.12); z-index:999; min-width:260px; max-height:240px; overflow-y:auto; }
+        .ac-item { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid #f3f4f6; }
+        .ac-item:hover { background:#faf5ff; }
+        .ac-id { font-weight:600; color:#7c3aed; }
+        .ac-sub { color:#6b7280; font-size:11px; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-6 max-w-5xl bg-white rounded-lg shadow-lg">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold">Purchase Invoice</h1>
+            <div class="flex gap-4 no-print">
+                <a href="/display-purchase-invoices" class="text-indigo-600 hover:underline text-sm py-2">View All Purchases →</a>
+                <a href="/" class="text-blue-600 hover:underline text-sm py-2">← Dashboard</a>
+            </div>
+        </div>
+
+        <form id="purchaseForm">
+            <!-- Supplier -->
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-2">Supplier</h2>
+                <div class="flex gap-3 items-start">
+                    <div class="relative">
+                        <input type="text" id="supplierId" class="border px-3 py-2 rounded w-64"
+                            placeholder="Supplier ID or name" autocomplete="off"
+                            oninput="acSupplier(this)" onblur="delayClose('supplierAc')" required>
+                        <div id="supplierAc" class="ac-dropdown hidden"></div>
+                    </div>
+                    <div id="supplierDetails" class="py-2 text-sm text-gray-600"></div>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1">Notes</label>
+                <input type="text" id="notes" class="w-full border px-3 py-2 rounded" placeholder="Optional notes">
+            </div>
+
+            <!-- Items Table -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold mb-2">Items
+                    <span id="supplierFilter" class="text-sm font-normal text-purple-600 ml-2"></span>
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="border px-2 py-2">Item ID</th>
+                                <th class="border px-2 py-2">Product Name</th>
+                                <th class="border px-2 py-2">Quantity</th>
+                                <th class="border px-2 py-2">Purchase Price</th>
+                                <th class="border px-2 py-2">Subtotal</th>
+                                <th class="border px-2 py-2 no-print">Act</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsBody"></tbody>
+                    </table>
+                </div>
+                <button type="button" onclick="addRow()"
+                    class="mt-2 bg-blue-500 text-white py-1 px-4 rounded hover:bg-blue-600 no-print text-sm">+ Add Item</button>
+            </div>
+
+            <!-- Total -->
+            <div class="flex justify-end mb-6">
+                <div class="w-64 text-sm">
+                    <div class="flex justify-between font-bold text-base border-t pt-3">
+                        <span>Total:</span>
+                        <span id="grandTotal">0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex justify-end gap-3 no-print">
+                <button type="button" onclick="savePurchase(false)"
+                    class="bg-green-500 text-white py-2 px-5 rounded hover:bg-green-600">Save Draft</button>
+                <button type="button" onclick="savePurchase(true)"
+                    class="bg-indigo-500 text-white py-2 px-5 rounded hover:bg-indigo-600">Complete & Add Stock</button>
+                <button type="button" onclick="window.print()"
+                    class="bg-gray-500 text-white py-2 px-5 rounded hover:bg-gray-600">Print</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        let items = [];
+        let currentSupplierId = null;
+
+        // ── Supplier ──────────────────────────────────────────────
+        async function fetchSupplier(id) {
+            const supplierId = id || document.getElementById('supplierId').value.trim();
+            if (!supplierId) return;
+            try {
+                const res = await fetch(`/api/v1/bulk/suppliers/${supplierId}`);
+                const s = await res.json();
+                currentSupplierId = s.supplier_id;
+                const bal = s.balance || 0;
+                document.getElementById('supplierDetails').innerHTML =
+                    `<strong>${s.name}</strong>${s.city ? ' — ' + s.city : ''}
+                    &nbsp;|&nbsp; We owe: <span class="${bal > 0 ? 'text-red-600' : 'text-green-600'} font-semibold">${bal.toFixed(2)}</span>`;
+                document.getElementById('supplierFilter').textContent = `(showing items from ${s.name})`;
+                document.getElementById('supplierId').value = s.supplier_id;
+            } catch {
+                document.getElementById('supplierDetails').innerHTML = '<span class="text-red-500">Supplier not found</span>';
+                currentSupplierId = null;
+                document.getElementById('supplierFilter').textContent = '';
+            }
+        }
+
+        // ── Item rows ─────────────────────────────────────────────
+        function addRow(item = { item_id: '', name: '', quantity: 1, price: 0, subtotal: 0 }) {
+            const idx = items.length;
+            items.push({ ...item });
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="border px-1 py-1">
+                    <input type="text" name="item_id" value="${item.item_id}" autocomplete="off"
+                        class="w-24 border px-1 py-1 rounded text-sm"
+                        oninput="acItem(this, ${idx})" onblur="delayCloseGlobal()" required>
+                </td>
+                <td class="border px-1 py-1 text-sm"><span name="name">${item.name}</span></td>
+                <td class="border px-1 py-1"><input type="number" name="quantity" min="1" value="${item.quantity}"
+                    class="w-20 border px-1 py-1 rounded text-sm text-right" oninput="calcRow(${idx})" required></td>
+                <td class="border px-1 py-1"><input type="number" name="price" min="0" step="0.01" value="${item.price}"
+                    class="w-24 border px-1 py-1 rounded text-sm text-right" oninput="calcRow(${idx})"></td>
+                <td class="border px-1 py-1 text-right font-medium text-sm"><span name="subtotal">${item.subtotal.toFixed(2)}</span></td>
+                <td class="border px-1 py-1 text-center no-print">
+                    <button type="button" onclick="removeRow(${idx})" class="text-red-500 text-xs hover:underline">X</button>
+                </td>`;
+            document.getElementById('itemsBody').appendChild(row);
+            row.querySelector('input[name="item_id"]').focus();
+        }
+
+        async function fetchItem(idx) {
+            const row = document.getElementById('itemsBody').rows[idx];
+            const itemId = row.querySelector('input[name="item_id"]').value.trim();
+            if (!itemId) return;
+            try {
+                const res = await fetch(`/api/v1/bulk/items/${itemId}`);
+                const item = await res.json();
+                row.querySelector('[name="name"]').textContent = item.product_name || '';
+                const tradePrice = item.trade_price || 0;
+                row.querySelector('input[name="price"]').value = tradePrice.toFixed(2);
+                items[idx].item_id = itemId;
+                items[idx].name = item.product_name || '';
+                items[idx].price = tradePrice;
+                calcRow(idx);
+            } catch {
+                row.querySelector('[name="name"]').textContent = 'Not found';
+            }
+        }
+
+        function calcRow(idx) {
+            const row = document.getElementById('itemsBody').rows[idx];
+            const qty = parseFloat(row.querySelector('input[name="quantity"]').value) || 0;
+            const price = parseFloat(row.querySelector('input[name="price"]').value) || 0;
+            const sub = qty * price;
+            row.querySelector('[name="subtotal"]').textContent = sub.toFixed(2);
+            items[idx].quantity = qty;
+            items[idx].price = price;
+            items[idx].subtotal = sub;
+            calcTotal();
+        }
+
+        function calcTotal() {
+            const total = items.reduce((s, i) => s + (i.subtotal || 0), 0);
+            document.getElementById('grandTotal').textContent = total.toFixed(2);
+        }
+
+        function removeRow(idx) {
+            items.splice(idx, 1);
+            document.getElementById('itemsBody').deleteRow(idx);
+            calcTotal();
+        }
+
+        async function savePurchase(complete) {
+            const supplierId = document.getElementById('supplierId').value.trim();
+            if (!supplierId) { alert('Please select a supplier.'); return; }
+            if (items.length === 0 || items.some(i => !i.item_id || i.quantity <= 0)) {
+                alert('Please add valid items.');
+                return;
+            }
+            const total = parseFloat(document.getElementById('grandTotal').textContent) || 0;
+            const body = {
+                supplier_id: supplierId,
+                notes: document.getElementById('notes').value.trim() || null,
+                items: items.map(i => ({ item_id: i.item_id, quantity: i.quantity, price: i.price })),
+                total,
+                status: 'draft'
+            };
+            try {
+                const url = `/api/v1/purchase/invoices${complete ? '?add_stock=true' : ''}`;
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || await res.text());
+                const data = await res.json();
+                if (complete) {
+                    window.print();
+                    items = [];
+                    currentSupplierId = null;
+                    document.getElementById('supplierId').value = '';
+                    document.getElementById('supplierDetails').innerHTML = '';
+                    document.getElementById('supplierFilter').textContent = '';
+                    document.getElementById('notes').value = '';
+                    document.getElementById('itemsBody').innerHTML = '';
+                    calcTotal();
+                    addRow();
+                    return;
+                }
+                alert(`${data.invoice_id} saved as draft.`);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // ── Autocomplete ──────────────────────────────────────────
+        let acTimer = null;
+        function delayClose(id) { setTimeout(() => { const d = document.getElementById(id); if (d) d.classList.add('hidden'); }, 200); }
+
+        async function acSupplier(input) {
+            const q = input.value.trim();
+            const drop = document.getElementById('supplierAc');
+            if (q.length < 1) { drop.classList.add('hidden'); return; }
+            clearTimeout(acTimer);
+            acTimer = setTimeout(async () => {
+                const res = await fetch(`/api/v1/bulk/suppliers/search?q=${encodeURIComponent(q)}`);
+                const list = await res.json();
+                if (!list.length) { drop.classList.add('hidden'); return; }
+                drop.innerHTML = list.map(s => `
+                    <div class="ac-item" onmousedown="pickSupplier('${s.supplier_id}')">
+                        <span class="ac-id">${s.supplier_id}</span>
+                        <span class="ac-sub ml-2">${s.name || ''}</span>
+                        <span class="ac-sub float-right ${(s.balance||0)>0?'text-red-600':'text-green-600'}">Owe: ${(s.balance||0).toFixed(0)}</span>
+                    </div>`).join('');
+                drop.classList.remove('hidden');
+            }, 200);
+        }
+
+        function pickSupplier(id) {
+            document.getElementById('supplierId').value = id;
+            document.getElementById('supplierAc').classList.add('hidden');
+            fetchSupplier(id);
+        }
+
+        function delayCloseGlobal() {
+            setTimeout(() => document.getElementById('itemAcGlobal').classList.add('hidden'), 200);
+        }
+
+        async function acItem(input, idx) {
+            const q = input.value.trim();
+            const drop = document.getElementById('itemAcGlobal');
+            if (q.length < 1) { drop.classList.add('hidden'); return; }
+            clearTimeout(acTimer);
+            acTimer = setTimeout(async () => {
+                const supplierParam = currentSupplierId ? `&supplier_id=${encodeURIComponent(currentSupplierId)}` : '';
+                const res = await fetch(`/api/v1/bulk/items/search?q=${encodeURIComponent(q)}${supplierParam}`);
+                const list = await res.json();
+                if (!list.length) { drop.classList.add('hidden'); return; }
+                drop.innerHTML = list.map(it => `
+                    <div class="ac-item" onmousedown="pickItem(${idx},'${it.item_id}')">
+                        <span class="ac-id">${it.item_id}</span>
+                        <span class="ac-sub ml-2">${it.product_name || ''}</span>
+                        <span class="ac-sub ml-1 text-gray-400">${it.size || ''}</span>
+                        <span class="ac-sub float-right">TP:${(it.trade_price||0).toFixed(0)} Stk:${it.stock||0}</span>
+                    </div>`).join('');
+                const rect = input.getBoundingClientRect();
+                drop.style.top = (rect.bottom + 2) + 'px';
+                drop.style.left = rect.left + 'px';
+                drop.classList.remove('hidden');
+            }, 200);
+        }
+
+        function pickItem(idx, itemId) {
+            const row = document.getElementById('itemsBody').rows[idx];
+            row.querySelector('input[name="item_id"]').value = itemId;
+            document.getElementById('itemAcGlobal').classList.add('hidden');
+            fetchItem(idx);
+        }
+
+        addRow();
+    </script>
+    <!-- Global item autocomplete dropdown (outside table to avoid overflow clipping) -->
+    <div id="itemAcGlobal" class="ac-dropdown hidden" style="position:fixed;z-index:9999;min-width:320px;max-height:260px;overflow-y:auto;"></div>
+</body>
+</html>

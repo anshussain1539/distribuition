@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Invoices</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; font-size: 12pt; margin: 0; padding: 10mm; }
+        }
+        .tab-btn.active-tab { background: white; border-bottom: 3px solid #6366f1; color: #4338ca; font-weight: bold; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-lg p-6">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold">Purchase Invoices</h1>
+            <div class="flex gap-3 no-print">
+                <a href="/purchase-invoice" class="bg-indigo-500 text-white px-4 py-2 rounded hover:bg-indigo-600 text-sm">+ New Purchase</a>
+                <a href="/" class="text-blue-600 hover:underline text-sm py-2">← Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex border-b mb-6">
+            <button onclick="switchTab('draft')" data-tab="draft"
+                class="flex-1 py-3 px-4 text-center tab-btn active-tab">Drafts</button>
+            <button onclick="switchTab('completed')" data-tab="completed"
+                class="flex-1 py-3 px-4 text-center tab-btn">Completed</button>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-sm">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="border px-4 py-3 text-left">Invoice ID</th>
+                        <th class="border px-4 py-3 text-left">Supplier</th>
+                        <th class="border px-4 py-3 text-center">Items</th>
+                        <th class="border px-4 py-3 text-right">Total</th>
+                        <th class="border px-4 py-3 text-left">Date</th>
+                        <th class="border px-4 py-3 text-center no-print">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="invoicesBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex justify-between items-center mt-6">
+            <button onclick="changePage(-1)" id="prevPage" disabled
+                class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50">Previous</button>
+            <span id="pageInfo" class="text-sm">Page 1 of 1</span>
+            <button onclick="changePage(1)" id="nextPage"
+                class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50">Next</button>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-8 relative">
+            <button onclick="closePreview()" class="absolute top-4 right-6 text-gray-500 hover:text-gray-900 text-3xl no-print">&times;</button>
+            <div id="previewContent"></div>
+            <div class="mt-6 flex justify-end gap-3 no-print">
+                <button onclick="closePreview()" class="px-5 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
+                <button onclick="window.print()" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Print</button>
+                <button id="completeBtn" onclick="completeFromDraft()"
+                    class="px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 hidden">Complete & Add Stock</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'draft';
+        let currentPage = 1;
+        const limit = 15;
+        let totalPages = 1;
+        let currentInvoice = null;
+
+        function switchTab(tab) {
+            currentTab = tab;
+            currentPage = 1;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active-tab', btn.dataset.tab === tab);
+            });
+            loadInvoices();
+        }
+
+        async function loadInvoices() {
+            try {
+                const res = await fetch(`/api/v1/purchase/invoices?page=${currentPage}&limit=${limit}&status=${currentTab}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                totalPages = Math.ceil(data.total / limit) || 1;
+                document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+                document.getElementById('prevPage').disabled = currentPage <= 1;
+                document.getElementById('nextPage').disabled = currentPage >= totalPages;
+
+                renderTable(data.data || []);
+            } catch (err) {
+                document.getElementById('invoicesBody').innerHTML =
+                    `<tr><td colspan="6" class="text-center py-8 text-red-500">Error: ${err.message}</td></tr>`;
+            }
+        }
+
+        function renderTable(invoices) {
+            const tbody = document.getElementById('invoicesBody');
+            if (!invoices.length) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">No ${currentTab} purchase invoices</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = invoices.map(inv => `
+                <tr class="hover:bg-gray-50">
+                    <td class="border px-4 py-3 font-mono text-sm">${inv.invoice_id}</td>
+                    <td class="border px-4 py-3">${inv.supplier_name || '—'}</td>
+                    <td class="border px-4 py-3 text-center">${inv.items?.length || 0}</td>
+                    <td class="border px-4 py-3 text-right font-medium">${(inv.total || 0).toFixed(2)}</td>
+                    <td class="border px-4 py-3 text-sm">${inv.created_at ? new Date(inv.created_at).toLocaleString() : '—'}</td>
+                    <td class="border px-4 py-3 text-center no-print">
+                        <button onclick="previewInvoice('${inv.invoice_id}')" class="text-blue-600 hover:underline mr-3 text-sm">Preview</button>
+                        ${currentTab === 'draft' ? `<button onclick="quickComplete('${inv.invoice_id}')" class="text-green-600 hover:underline text-sm">Complete</button>` : ''}
+                    </td>
+                </tr>`).join('');
+        }
+
+        async function previewInvoice(invoiceId) {
+            try {
+                const res = await fetch(`/api/v1/purchase/invoices/${invoiceId}`);
+                if (!res.ok) throw new Error(await res.text());
+                currentInvoice = await res.json();
+                renderPreview(currentInvoice);
+                document.getElementById('completeBtn').classList.toggle('hidden', currentInvoice.status !== 'draft');
+                document.getElementById('previewModal').classList.remove('hidden');
+            } catch (err) {
+                alert('Could not load invoice: ' + err.message);
+            }
+        }
+
+        async function renderPreview(inv) {
+            // Enrich with product names
+            const itemRows = await Promise.all((inv.items || []).map(async item => {
+                let name = item.item_id;
+                try {
+                    const r = await fetch(`/api/v1/bulk/items/${item.item_id}`);
+                    if (r.ok) { const d = await r.json(); name = d.product_name || d.name || item.item_id; }
+                } catch {}
+                return { ...item, name };
+            }));
+
+            document.getElementById('previewContent').innerHTML = `
+                <div class="text-center mb-6 border-b pb-4">
+                    <h1 class="text-2xl font-bold">PURCHASE INVOICE</h1>
+                    <p class="text-lg font-semibold mt-1">${inv.invoice_id}</p>
+                    <p class="text-gray-500 text-sm">${inv.created_at ? new Date(inv.created_at).toLocaleString() : ''}</p>
+                    <span class="inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold ${inv.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
+                        ${inv.status.toUpperCase()}
+                    </span>
+                </div>
+                <div class="mb-4 text-sm">
+                    <p><strong>Supplier:</strong> ${inv.supplier_name || 'N/A'}</p>
+                    ${inv.notes ? `<p><strong>Notes:</strong> ${inv.notes}</p>` : ''}
+                </div>
+                <table class="w-full border-collapse mb-6 text-sm">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-3 py-2 text-left">Item ID</th>
+                            <th class="border px-3 py-2 text-left">Product</th>
+                            <th class="border px-3 py-2 text-right">Qty</th>
+                            <th class="border px-3 py-2 text-right">Price</th>
+                            <th class="border px-3 py-2 text-right">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemRows.map(item => `
+                            <tr class="border-b">
+                                <td class="border px-3 py-2 font-mono text-xs">${item.item_id}</td>
+                                <td class="border px-3 py-2">${item.name}</td>
+                                <td class="border px-3 py-2 text-right">${item.quantity}</td>
+                                <td class="border px-3 py-2 text-right">${(item.price || 0).toFixed(2)}</td>
+                                <td class="border px-3 py-2 text-right font-medium">${((item.quantity || 0) * (item.price || 0)).toFixed(2)}</td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>
+                <div class="text-right border-t pt-3">
+                    <p class="text-xl font-bold">Total: ${(inv.total || 0).toFixed(2)}</p>
+                </div>
+                <div class="mt-8 text-center text-gray-400 text-sm italic">Purchase Record</div>`;
+        }
+
+        async function completeFromDraft() {
+            if (!currentInvoice?.invoice_id) return;
+            if (!confirm('Complete this purchase? Stock will be added.')) return;
+            const res = await fetch(`/api/v1/purchase/invoices/${currentInvoice.invoice_id}/complete`, { method: 'POST' });
+            if (res.ok) { alert('Stock added successfully.'); closePreview(); loadInvoices(); }
+            else alert('Error: ' + await res.text());
+        }
+
+        async function quickComplete(id) {
+            if (!confirm(`Complete ${id}? Stock will be added.`)) return;
+            const res = await fetch(`/api/v1/purchase/invoices/${id}/complete`, { method: 'POST' });
+            if (res.ok) { alert('Stock added.'); loadInvoices(); }
+            else alert('Error: ' + await res.text());
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.add('hidden');
+            currentInvoice = null;
+        }
+
+        function changePage(delta) {
+            const np = currentPage + delta;
+            if (np < 1 || np > totalPages) return;
+            currentPage = np;
+            loadInvoices();
+        }
+
+        switchTab('draft');
+    </script>
+</body>
+</html>

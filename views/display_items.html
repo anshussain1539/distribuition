@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Shops, Items & Suppliers</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-6">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-3xl font-bold">Shops, Items & Suppliers</h1>
+            <a href="/" class="text-blue-600 hover:underline text-sm">← Dashboard</a>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex mb-4 border-b">
+            <button onclick="switchTab('shops')" id="tabShops"
+                class="py-2 px-6 font-semibold border-b-2 border-blue-500 text-blue-600">Shops</button>
+            <button onclick="switchTab('items')" id="tabItems"
+                class="py-2 px-6 font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">Items</button>
+            <button onclick="switchTab('suppliers')" id="tabSuppliers"
+                class="py-2 px-6 font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">Suppliers</button>
+        </div>
+
+        <!-- Content -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <button onclick="openAddModal()" class="mb-4 bg-indigo-500 text-white py-2 px-4 rounded hover:bg-indigo-600">+ Add New</button>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-sm">
+                    <thead id="tableHeader" class="bg-gray-100"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            <div class="flex justify-between mt-4">
+                <button onclick="prevPage()" id="prevBtn" disabled class="bg-gray-300 py-2 px-4 rounded hover:bg-gray-400">Previous</button>
+                <span id="pageInfo" class="py-2">Page 1</span>
+                <button onclick="nextPage()" id="nextBtn" class="bg-gray-300 py-2 px-4 rounded hover:bg-gray-400">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h2 id="modalTitle" class="text-xl font-bold mb-4">Add/Edit</h2>
+            <form id="form"></form>
+            <div id="modalError" class="text-red-500 text-sm mt-2 hidden"></div>
+            <div class="flex justify-end mt-4 gap-2">
+                <button onclick="closeModal()" class="bg-gray-500 text-white py-2 px-4 rounded hover:bg-gray-600">Cancel</button>
+                <button onclick="saveData()" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentType = 'shops';
+        let currentPage = 1;
+        const limit = 25;
+        let totalPages = 1;
+        let editingId = null;
+
+        const shopFields = [
+            { name: 'shop_id', label: 'Shop ID', type: 'text', required: true },
+            { name: 'name', label: 'Name', type: 'text', required: true },
+            { name: 'address', label: 'Address', type: 'text', required: true },
+            { name: 'area', label: 'Area', type: 'text' },
+            { name: 'city', label: 'City', type: 'text' },
+            { name: 'contact', label: 'Contact', type: 'text' },
+            { name: 'opening_balance', label: 'Opening Balance', type: 'number', step: '0.01', min: '0', default: 0 },
+        ];
+
+        const itemFields = [
+            { name: 'item_id', label: 'Item ID', type: 'text', required: true },
+            { name: 'company_name', label: 'Company Name', type: 'text' },
+            { name: 'product_name', label: 'Product Name', type: 'text', required: true },
+            { name: 'size', label: 'Size', type: 'text' },
+            { name: 'trade_price', label: 'Trade Price', type: 'number', step: '0.01', min: '0', default: 0 },
+            { name: 'company_price', label: 'Company Price', type: 'number', step: '0.01', min: '0', default: 0 },
+            { name: 'retail_price', label: 'Retail Price', type: 'number', step: '0.01', min: '0', required: true },
+            { name: 'stock', label: 'Stock', type: 'number', min: '0', default: 0 },
+            { name: 'supplier_id', label: 'Supplier ID', type: 'text' },
+        ];
+
+        const supplierFields = [
+            { name: 'supplier_id', label: 'Supplier ID', type: 'text', required: true },
+            { name: 'name', label: 'Name', type: 'text', required: true },
+            { name: 'address', label: 'Address', type: 'text', required: true },
+            { name: 'area', label: 'Area', type: 'text' },
+            { name: 'city', label: 'City', type: 'text' },
+            { name: 'contact', label: 'Contact', type: 'text' },
+            { name: 'opening_balance', label: 'Opening Balance', type: 'number', step: '0.01', default: 0 },
+        ];
+
+        const tabColors = {
+            shops:     { active: 'border-b-2 border-blue-500 text-blue-600',     inactive: 'border-b-2 border-transparent text-gray-500 hover:text-gray-700' },
+            items:     { active: 'border-b-2 border-green-500 text-green-600',    inactive: 'border-b-2 border-transparent text-gray-500 hover:text-gray-700' },
+            suppliers: { active: 'border-b-2 border-purple-500 text-purple-600',  inactive: 'border-b-2 border-transparent text-gray-500 hover:text-gray-700' },
+        };
+
+        function switchTab(type) {
+            currentType = type;
+            currentPage = 1;
+            ['shops', 'items', 'suppliers'].forEach(t => {
+                const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+                btn.className = `py-2 px-6 font-semibold ${tabColors[t][t === type ? 'active' : 'inactive']}`;
+            });
+            loadData();
+        }
+
+        async function loadData() {
+            try {
+                const res = await fetch(`/api/v1/bulk/${currentType}?page=${currentPage}&limit=${limit}`);
+                const data = await res.json();
+                totalPages = Math.ceil(data.total / limit) || 1;
+                document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+                document.getElementById('prevBtn').disabled = currentPage === 1;
+                document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+                renderTable(data.data);
+            } catch (err) { console.error(err); }
+        }
+
+        function renderTable(data) {
+            let headers, getRow, getId;
+
+            if (currentType === 'shops') {
+                headers = ['Shop ID', 'Name', 'Address', 'Area', 'City', 'Contact', 'Balance', 'Actions'];
+                getId = r => r.shop_id;
+                getRow = r => [r.shop_id, r.name, r.address, r.area||'—', r.city||'—', r.contact||'—',
+                    `<span class="${(r.balance||0)>0?'text-red-600 font-semibold':'text-green-600'}">${(r.balance||0).toFixed(2)}</span>`];
+            } else if (currentType === 'items') {
+                headers = ['Item ID', 'Supplier', 'Company', 'Product', 'Size', 'Trade', 'Co. Price', 'Retail', 'Stock', 'Actions'];
+                getId = r => r.item_id;
+                getRow = r => [r.item_id, r.supplier_id||'—', r.company_name||'—', r.product_name, r.size||'—',
+                    (r.trade_price||0).toFixed(2), (r.company_price||0).toFixed(2),
+                    (r.retail_price||0).toFixed(2), r.stock||0];
+            } else {
+                headers = ['Supplier ID', 'Name', 'Address', 'Area', 'City', 'Contact', 'We Owe', 'Actions'];
+                getId = r => r.supplier_id;
+                getRow = r => [r.supplier_id, r.name, r.address, r.area||'—', r.city||'—', r.contact||'—',
+                    `<span class="${(r.balance||0)>0?'text-red-600 font-semibold':'text-green-600'}">${(r.balance||0).toFixed(2)}</span>`];
+            }
+
+            document.getElementById('tableHeader').innerHTML =
+                '<tr>' + headers.map(h => `<th class="border px-3 py-2 text-left whitespace-nowrap">${h}</th>`).join('') + '</tr>';
+
+            if (!data.length) {
+                document.getElementById('tableBody').innerHTML =
+                    `<tr><td colspan="${headers.length}" class="text-center py-6 text-gray-400">No records found</td></tr>`;
+                return;
+            }
+
+            document.getElementById('tableBody').innerHTML = data.map(row => {
+                const id = getId(row);
+                const cells = getRow(row);
+                return '<tr class="hover:bg-gray-50">' +
+                    cells.map(c => `<td class="border px-3 py-2 whitespace-nowrap text-sm">${c}</td>`).join('') +
+                    `<td class="border px-3 py-2"><button onclick="editItem('${id}')" class="text-blue-500 hover:underline text-sm">Edit</button></td></tr>`;
+            }).join('');
+        }
+
+        function getFields() {
+            return currentType === 'shops' ? shopFields : currentType === 'items' ? itemFields : supplierFields;
+        }
+
+        function getIdField() {
+            return currentType === 'shops' ? 'shop_id' : currentType === 'items' ? 'item_id' : 'supplier_id';
+        }
+
+        function openAddModal() {
+            editingId = null;
+            document.getElementById('modalTitle').textContent = `Add New ${currentType.slice(0, -1)}`;
+            renderForm({});
+            document.getElementById('modalError').classList.add('hidden');
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        async function editItem(id) {
+            try {
+                const res = await fetch(`/api/v1/bulk/${currentType}/${id}`);
+                const item = await res.json();
+                editingId = id;
+                document.getElementById('modalTitle').textContent = `Edit ${currentType.slice(0, -1)}`;
+                renderForm(item);
+                document.getElementById('modalError').classList.add('hidden');
+                document.getElementById('modal').classList.remove('hidden');
+            } catch (err) { console.error(err); }
+        }
+
+        function renderForm(data) {
+            const fields = getFields();
+            const idField = getIdField();
+            document.getElementById('form').innerHTML = fields.map(f => {
+                const val = data[f.name] !== undefined ? data[f.name] : (f.default !== undefined ? f.default : '');
+                const isId = f.name === idField;
+                const ro = editingId && isId ? 'readonly class="w-full border px-3 py-2 rounded bg-gray-100"' : 'class="w-full border px-3 py-2 rounded"';
+                const step = f.step ? `step="${f.step}"` : '';
+                const min = f.min !== undefined ? `min="${f.min}"` : '';
+                return `<div class="mb-3">
+                    <label class="block text-sm font-medium mb-1">${f.label}${f.required ? ' *' : ''}</label>
+                    <input type="${f.type}" name="${f.name}" value="${val}" ${ro} ${step} ${min}>
+                </div>`;
+            }).join('');
+        }
+
+        async function saveData() {
+            const formData = new FormData(document.getElementById('form'));
+            const data = Object.fromEntries(formData.entries());
+
+            if (currentType === 'items') {
+                ['trade_price', 'company_price', 'retail_price'].forEach(f => { if (data[f] !== '') data[f] = parseFloat(data[f]) || 0; });
+                data.stock = parseInt(data.stock) || 0;
+            }
+            if (currentType === 'shops' || currentType === 'suppliers') {
+                data.opening_balance = parseFloat(data.opening_balance) || 0;
+            }
+
+            const errEl = document.getElementById('modalError');
+            try {
+                const idField = getIdField();
+                const method = editingId ? 'PUT' : 'POST';
+                const url = editingId ? `/api/v1/bulk/${currentType}/${editingId}` : `/api/v1/bulk/${currentType}`;
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (res.ok) { closeModal(); loadData(); }
+                else { const err = await res.json(); errEl.textContent = err.detail || 'Error saving'; errEl.classList.remove('hidden'); }
+            } catch { errEl.textContent = 'Network error'; errEl.classList.remove('hidden'); }
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+        function prevPage() { if (currentPage > 1) { currentPage--; loadData(); } }
+        function nextPage() { if (currentPage < totalPages) { currentPage++; loadData(); } }
+
+        switchTab('shops');
+    </script>
+</body>
+</html>

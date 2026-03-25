@@ -1,0 +1,11 @@
+{
+    "editor.detectIndentation": false,
+    "editor.tabSize": 4,
+
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true
+    },
+    "pylint.cwd": "${workspaceFolder}",
+    "mypy-type-checker.cwd": "${workspaceFolder}/src"
+}

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Invoices</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; font-size: 12pt; margin: 0; padding: 10mm; }
+            .print-only { display: block !important; }
+        }
+        .hidden { display: none; }
+        .tab-btn {
+            transition: all 0.2s;
+        }
+        .tab-btn.active-tab {
+            background-color: white;
+            border-bottom: 3px solid #3b82f6;
+            color: #1e40af;
+            font-weight: bold;
+        }
+        .tab-drafts.active-tab { border-bottom-color: #3b82f6; }
+        .tab-completed.active-tab { border-bottom-color: #10b981; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+
+    <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-lg p-6">
+        <h1 class="text-3xl font-bold mb-6 text-center">Invoices Management</h1>
+
+        <!-- Tabs -->
+        <div class="flex border-b mb-6">
+            <button onclick="switchTab('drafts')" 
+                    class="flex-1 py-3 px-4 text-center tab-btn tab-drafts active-tab" 
+                    data-tab="drafts">Drafts</button>
+            <button onclick="switchTab('completed')" 
+                    class="flex-1 py-3 px-4 text-center tab-btn tab-completed" 
+                    data-tab="completed">Completed</button>
+        </div>
+
+        <!-- Invoices Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse min-w-full">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="border px-4 py-3 text-left">Invoice ID</th>
+                        <th class="border px-4 py-3 text-left">Shop ID</th>
+                        <th class="border px-4 py-3 text-left">Items</th>
+                        <th class="border px-4 py-3 text-left">Final Total</th>
+                        <th class="border px-4 py-3 text-left">Created At</th>
+                        <th class="border px-4 py-3 text-center no-print">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="invoicesBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex justify-between items-center mt-6">
+            <button onclick="changePage(-1)" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50" id="prevPage" disabled>Previous</button>
+            <span id="pageInfo">Page 1 of 1</span>
+            <button onclick="changePage(1)" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300" id="nextPage">Next</button>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-8 relative">
+            <button onclick="closePreview()" class="absolute top-4 right-6 text-gray-600 hover:text-gray-900 text-3xl no-print font-bold">&times;</button>
+            
+            <!-- Only one print-friendly content area -->
+            <div id="previewContent"></div>
+
+            <div class="mt-8 flex justify-end gap-4 no-print">
+                <button onclick="closePreview()" class="px-6 py-3 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
+                <button onclick="printCurrentPreview()" class="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700">Print</button>
+                <button id="completeFromDraftBtn" onclick="completeFromDraft()" class="px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700 hidden">Complete & Deduct Stock</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'drafts';
+        let currentPage = 1;
+        const limit = 15;
+        let totalPages = 1;
+        let currentInvoice = null;
+
+        function switchTab(tab) {
+            currentTab = tab;
+            currentPage = 1;
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                const isActive = btn.dataset.tab === tab;
+                btn.classList.toggle('active-tab', isActive);
+            });
+
+            loadInvoices();
+        }
+
+        async function loadInvoices() {
+            try {
+                const status = currentTab === 'drafts' ? 'draft' : 'completed';
+                const url = `/api/v1/invoice/invoices?page=${currentPage}&limit=${limit}&status=${status}`;
+                const res = await fetch(url);
+                
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                
+                const data = await res.json();
+
+                totalPages = Math.ceil(data.total / limit) || 1;
+                document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+                document.getElementById('prevPage').disabled = currentPage <= 1;
+                document.getElementById('nextPage').disabled = currentPage >= totalPages;
+
+                renderInvoices(data.data || []);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('invoicesBody').innerHTML = 
+                    `<tr><td colspan="6" class="text-center py-8 text-red-600">Error: ${err.message}</td></tr>`;
+            }
+        }
+
+        function renderInvoices(invoices) {
+            const tbody = document.getElementById('invoicesBody');
+            tbody.innerHTML = '';
+
+            if (invoices.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500">No invoices in this category</td></tr>';
+                return;
+            }
+
+            invoices.forEach(inv => {
+                const safeId = inv.invoice_id || '—';
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="border px-4 py-3 font-mono">${safeId}</td>
+                    <td class="border px-4 py-3">${inv.shop_id || '—'}</td>
+                    <td class="border px-4 py-3">${inv.items?.length || 0}</td>
+                    <td class="border px-4 py-3 font-medium">${(inv.final_total || 0).toFixed(2)}</td>
+                    <td class="border px-4 py-3">${inv.created_at ? new Date(inv.created_at).toLocaleString() : '—'}</td>
+                    <td class="border px-4 py-3 text-center no-print">
+                        <button onclick="previewInvoice('${safeId}')" class="text-blue-600 hover:underline mr-3">Preview</button>
+                        ${currentTab === 'drafts' ? 
+                            `<button onclick="editDraft('${safeId}')" class="text-green-600 hover:underline">Edit</button>` : ''}
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        async function previewInvoice(invoiceId) {
+            try {
+                const res = await fetch(`/api/v1/invoice/invoices/${invoiceId}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+                
+                currentInvoice = await res.json();
+                if (!currentInvoice) throw new Error("Invoice not found");
+
+                renderPreview(currentInvoice);
+                document.getElementById('previewModal').classList.remove('hidden');
+                document.getElementById('completeFromDraftBtn').classList.toggle('hidden', currentTab !== 'drafts' || currentInvoice.status !== 'draft');
+            } catch (err) {
+                console.error('Preview error:', err);
+                alert("Could not load invoice:\n" + err.message);
+            }
+        }
+
+        function renderPreview(inv) {
+            const container = document.getElementById('previewContent');
+            container.innerHTML = ''; // clear previous
+
+            const invoiceId = inv.invoice_id || 'N/A';
+            const dateStr = inv.created_at ? new Date(inv.created_at).toLocaleString() : 'N/A';
+
+            container.innerHTML = `
+                <div class="text-center mb-8 border-b pb-6">
+                    <h1 class="text-3xl font-bold">INVOICE</h1>
+                    <p class="text-xl font-semibold mt-1">${invoiceId}</p>
+                    <p class="text-gray-600 mt-1">${dateStr}</p>
+                </div>
+
+                <div class="mb-8">
+                    <strong>Shop ID:</strong> ${inv.shop_id || 'N/A'}
+                </div>
+
+                <table class="w-full border-collapse mb-8">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="border px-4 py-3 text-left">Item ID</th>
+                            <th class="border px-4 py-3 text-left">Qty</th>
+                            <th class="border px-4 py-3 text-right">Price</th>
+                            <th class="border px-4 py-3 text-right">Disc %</th>
+                            <th class="border px-4 py-3 text-right">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${(inv.items || []).map(item => `
+                            <tr class="border-b">
+                                <td class="border px-4 py-3">${item.item_id || 'N/A'}</td>
+                                <td class="border px-4 py-3">${item.quantity || 0}</td>
+                                <td class="border px-4 py-3 text-right">${(item.price || 0).toFixed(2)}</td>
+                                <td class="border px-4 py-3 text-right">${(item.discount || 0).toFixed(2)}</td>
+                                <td class="border px-4 py-3 text-right font-medium">
+                                    ${((item.quantity || 0) * (item.price || 0) * (1 - (item.discount || 0)/100)).toFixed(2)}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+
+                <div class="text-right space-y-2">
+                    <p>Total before discount: <strong>${(inv.final_total / (1 - (inv.overall_discount||0)/100) || inv.final_total || 0).toFixed(2)}</strong></p>
+                    <p>Overall Discount (${inv.overall_discount || 0}%): <strong>${((inv.final_total || 0) * (inv.overall_discount || 0)/100 / (1 - (inv.overall_discount||0)/100) || 0).toFixed(2)}</strong></p>
+                    <p class="text-2xl font-bold mt-4 border-t pt-4">Final Total: ${(inv.final_total || 0).toFixed(2)}</p>
+                </div>
+
+                <div class="mt-12 text-center text-gray-500 text-sm italic">
+                    Thank you for your business!
+                </div>
+            `;
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.add('hidden');
+            currentInvoice = null;
+        }
+
+        function printCurrentPreview() {
+            window.print();
+        }
+
+        async function completeFromDraft() {
+            if (!currentInvoice?.invoice_id || currentInvoice.status !== 'draft') {
+                alert('This invoice cannot be completed.');
+                return;
+            }
+            if (!confirm("Complete this draft? This will deduct stock and cannot be undone.")) return;
+
+            try {
+                const res = await fetch(`/api/v1/invoice/invoices/${currentInvoice.invoice_id}/complete`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})  // Empty body
+                });
+
+                if (res.ok) {
+                    alert("Invoice completed successfully. Stock has been deducted.");
+                    closePreview();
+                    loadInvoices();
+                } else {
+                    const errText = await res.text();
+                    console.error('Complete error:', errText);
+                    alert("Failed to complete invoice:\n" + errText);
+                }
+            } catch (err) {
+                console.error('Network error:', err);
+                alert("Network error: " + err.message);
+            }
+        }
+
+        function editDraft(invoiceId) {
+            window.location.href = `/invoice?edit=${invoiceId}`;
+        }
+
+        function changePage(delta) {
+            const newPage = currentPage + delta;
+            if (newPage < 1 || newPage > totalPages) return;
+            currentPage = newPage;
+            loadInvoices();
+        }
+
+        // Start
+        switchTab('drafts');
+    </script>
+</body>
+</html>
